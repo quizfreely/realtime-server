@@ -21,14 +21,18 @@ type Message struct {
 }
 
 type User struct {
-	ID   string
+	ID         *string
+	UniqueName *string
+	isHost bool
 	Conn *websocket.Conn
 	Send chan []byte
 }
 
 type Game struct {
 	Code  string
-	Users map[string]*User
+	Host *User
+	Players map[string]*User
+	HostCode string
 	Mutex sync.Mutex
 }
 
@@ -54,9 +58,11 @@ func randomCode() string {
 
 func createGame() *Game {
 	code := randomCode()
+	hostCode := randomCode()
 	g := &Game{
 		Code:  code,
-		Users: make(map[string]*User),
+		Players: make(map[string]*User),
+		HostCode: hostCode,
 	}
 	gamesMu.Lock()
 	games[code] = g
@@ -148,7 +154,9 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 	var init struct {
 		Action string `json:"action"` // "host" or "join"
 		Code   string `json:"code"`
-		UserID string `json:"userId"`
+		HostCode   *string `json:"hostCode"`
+		UserID *string `json:"userId"`
+		UniqueName *string `json:"uniqueName"`
 	}
 	if err := json.Unmarshal(msg, &init); err != nil {
 		log.Error().Err(err).Msg("bad init message")
@@ -157,55 +165,144 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var game *Game
+	var user *User
 	if init.Action == "host" {
 		game = createGame()
-		log.Trace().Msg("Created game: "+game.Code)
+		log.Trace().Msg("Created game: "+game.Code+", host code: "+game.HostCode)
+
+		user = &User{
+			isHost: true,
+			Conn: conn,
+			Send: make(chan []byte, 256),
+		}
+
+		// Set host for game
+		game.Mutex.Lock()
+		game.Host = user
+		game.Mutex.Unlock()
+
+		// Inform this user about the game code, host code, & players
+		initialData := map[string]any{
+			"type": "host_joined",
+			"code": game.Code,
+			"hostCode": game.HostCode,
+			"players": func() []string {
+				uniqueNames := []string{}
+				for uniqueName := range game.Players {
+					uniqueNames = append(uniqueNames, uniqueName)
+				}
+				return uniqueNames
+			}(),
+		}
+		b, _ := json.Marshal(initialData)
+		user.Conn.WriteMessage(websocket.TextMessage, b)
+	} else if init.Action == "rejoin_host" {
+		var ok bool
+		game, ok = getGame(init.Code)
+		if !ok {
+			conn.WriteMessage(websocket.TextMessage, []byte(`{"error":"Game not found","msg":"Game not found"}`))
+			conn.Close()
+			return
+		}
+
+		if init.HostCode == nil {
+			conn.WriteMessage(websocket.TextMessage, []byte(`{"error":"Missing host code","msg":"Failed to rejoin game as host 😭"}`))
+			conn.Close()
+			return
+		}
+
+		if *init.HostCode != game.HostCode {
+			conn.WriteMessage(websocket.TextMessage, []byte(`{"error":"Wrong host code !!","msg":"Failed to rejoin game as host 😭"}`))
+			conn.Close()
+			return
+		}
+
+		user = &User{
+			isHost: true,
+			Conn: conn,
+			Send: make(chan []byte, 256),
+		}
+
+		// Update host
+		game.Mutex.Lock()
+		game.Host = user
+		game.Mutex.Unlock()
+
+		// Inform this user about the game code, host code, & players
+		initialData := map[string]any{
+			"type": "host_joined",
+			"code": game.Code,
+			"hostCode": game.HostCode,
+			"players": func() []string {
+				uniqueNames := []string{}
+				for uniqueName := range game.Players {
+					uniqueNames = append(uniqueNames, uniqueName)
+				}
+				return uniqueNames
+			}(),
+		}
+		b, _ := json.Marshal(initialData)
+		user.Conn.WriteMessage(websocket.TextMessage, b)
 	} else if init.Action == "join" {
 		var ok bool
 		game, ok = getGame(init.Code)
 		if !ok {
-			conn.WriteMessage(websocket.TextMessage, []byte(`{"error":"Game not found"}`))
+			conn.WriteMessage(websocket.TextMessage, []byte(`{"error":"Game not found","msg":"Game not found"}`))
 			conn.Close()
 			return
 		}
+
+		user = &User{
+			ID:   init.UserID,
+			UniqueName: init.UniqueName,
+			isHost: false,
+			Conn: conn,
+			Send: make(chan []byte, 256),
+		}
+
+		if user.UniqueName == nil {
+			conn.WriteMessage(websocket.TextMessage, []byte(`{"error":"UniqueName can't be nil","msg":"Your name can't be blank"}`))
+			conn.Close()
+			return
+		}
+
+		if game.Players[*user.UniqueName] != nil {
+			conn.WriteMessage(websocket.TextMessage, []byte(`{"error":"UniqueName already taken","msg":"That name already exists, choose a different one"}`))
+			conn.Close()
+			return
+		}
+
+		// Add player to game
+		game.Mutex.Lock()
+		game.Players[*user.UniqueName] = user
+		game.Mutex.Unlock()
+
+		// Broadcast join event
+		joinMsg, _ := json.Marshal(map[string]any{
+			"type": "player_joined",
+			"player": *user.UniqueName,
+		})
+		broadcast(game, joinMsg, *user.UniqueName)
+
+		// Inform this user about the game code & current players
+		initialData := map[string]any{
+			"type": "joined",
+			"code": game.Code,
+			"players": func() []string {
+				uniqueNames := []string{}
+				for uniqueName := range game.Players {
+					uniqueNames = append(uniqueNames, uniqueName)
+				}
+				return uniqueNames
+			}(),
+		}
+		b, _ := json.Marshal(initialData)
+		user.Conn.WriteMessage(websocket.TextMessage, b)
 	} else {
 		conn.WriteMessage(websocket.TextMessage, []byte(`{"error":"Invalid action"}`))
 		conn.Close()
 		return
 	}
-
-	user := &User{
-		ID:   init.UserID,
-		Conn: conn,
-		Send: make(chan []byte, 256),
-	}
-
-	// Add user to game
-	game.Mutex.Lock()
-	game.Users[user.ID] = user
-	game.Mutex.Unlock()
-
-	// Inform this user about the game code & current players
-	initialData := map[string]any{
-		"type": "joined",
-		"code": game.Code,
-		"users": func() []string {
-			ids := []string{}
-			for id := range game.Users {
-				ids = append(ids, id)
-			}
-			return ids
-		}(),
-	}
-	b, _ := json.Marshal(initialData)
-	user.Conn.WriteMessage(websocket.TextMessage, b)
-
-	// Broadcast join event
-	joinMsg, _ := json.Marshal(map[string]any{
-		"type": "user_joined",
-		"user": user.ID,
-	})
-	broadcast(game, joinMsg, user.ID)
 
 	// Start goroutines
 	go readPump(game, user)
@@ -216,8 +313,13 @@ func readPump(game *Game, user *User) {
 	defer func() {
 		// Cleanup on disconnect
 		game.Mutex.Lock()
-		delete(game.Users, user.ID)
-		empty := len(game.Users) == 0
+		if user.isHost {
+			game.Host = nil
+		} else {
+			delete(game.Players, *user.UniqueName)
+		}
+		empty := len(game.Players) == 0 &&
+			game.Host == nil
 		game.Mutex.Unlock()
 		user.Conn.Close()
 
@@ -229,11 +331,18 @@ func readPump(game *Game, user *User) {
 		}
 
 		// Notify others
-		leaveMsg, _ := json.Marshal(map[string]any{
-			"type": "user_left",
-			"user": user.ID,
-		})
-		broadcast(game, leaveMsg, "")
+		if user.isHost {
+			leaveMsg, _ := json.Marshal(map[string]any{
+				"type": "host_left",
+			})
+			broadcast(game, leaveMsg, "")
+		} else {
+			leaveMsg, _ := json.Marshal(map[string]any{
+				"type": "player_left",
+				"player": user.UniqueName,
+			})
+			broadcast(game, leaveMsg, "")
+		}
 	}()
 
 	for {
@@ -244,7 +353,7 @@ func readPump(game *Game, user *User) {
 		}
 
 		// Forward message to others
-		broadcast(game, msg, user.ID)
+		broadcast(game, msg, *user.UniqueName)
 	}
 }
 
@@ -258,11 +367,11 @@ func writePump(user *User) {
 	}
 }
 
-func broadcast(game *Game, msg []byte, excludeID string) {
+func broadcast(game *Game, msg []byte, excludeUniqueName string) {
 	game.Mutex.Lock()
 	defer game.Mutex.Unlock()
-	for id, u := range game.Users {
-		if id == excludeID {
+	for uniqueName, u := range game.Players {
+		if uniqueName == excludeUniqueName {
 			continue
 		}
 		select {
