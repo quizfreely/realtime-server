@@ -370,6 +370,11 @@ func writePump(user *User) {
 func broadcast(game *Game, msg []byte, excludeUniqueName string) {
 	game.Mutex.Lock()
 	defer game.Mutex.Unlock()
+	select {
+	case game.Host.Send <- msg:
+	default:
+		// Drop message if user is lagging
+	}
 	for uniqueName, u := range game.Players {
 		if uniqueName == excludeUniqueName {
 			continue
