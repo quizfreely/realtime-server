@@ -37,18 +37,23 @@ var (
 	gamesMu sync.Mutex
 )
 
-func randomCode(n int) string {
-	const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+/* returns random 9-character alphanumeric string,
+with 3 letters and 6 digits, in this format: A12B34C56 */
+func randomCode() string {
+	const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	const numbers = "0123456789"
 	rand.Seed(time.Now().UnixNano())
-	b := make([]byte, n)
-	for i := range b {
+	b := make([]byte, 9)
+	for i := 0; i < 9; i += 3 {
 		b[i] = letters[rand.Intn(len(letters))]
+		b[i+1] = numbers[rand.Intn(len(numbers))]
+		b[i+2] = numbers[rand.Intn(len(numbers))]
 	}
 	return string(b)
 }
 
 func createGame() *Game {
-	code := randomCode(6)
+	code := randomCode()
 	g := &Game{
 		Code:  code,
 		Users: make(map[string]*User),
@@ -220,7 +225,7 @@ func readPump(game *Game, user *User) {
     		gamesMu.Lock()
     		delete(games, game.Code)
     		gamesMu.Unlock()
-    		log.Trace().Msg("Game"+game.Code+"removed (no users left)")
+    		log.Trace().Msg("Game "+game.Code+" removed (no users left)")
 		}
 
 		// Notify others
