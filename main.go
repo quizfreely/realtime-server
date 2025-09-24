@@ -48,7 +48,7 @@ func randomCode(n int) string {
 }
 
 func createGame() *Game {
-	code := randomCode(5)
+	code := randomCode(6)
 	g := &Game{
 		Code:  code,
 		Users: make(map[string]*User),
@@ -212,8 +212,16 @@ func readPump(game *Game, user *User) {
 		// Cleanup on disconnect
 		game.Mutex.Lock()
 		delete(game.Users, user.ID)
+		empty := len(game.Users) == 0
 		game.Mutex.Unlock()
 		user.Conn.Close()
+
+		if empty {
+    		gamesMu.Lock()
+    		delete(games, game.Code)
+    		gamesMu.Unlock()
+    		log.Trace().Msg("Game"+game.Code+"removed (no users left)")
+		}
 
 		// Notify others
 		leaveMsg, _ := json.Marshal(map[string]any{
@@ -226,7 +234,7 @@ func readPump(game *Game, user *User) {
 	for {
 		_, msg, err := user.Conn.ReadMessage()
 		if err != nil {
-			log.Error().Err(err).Msg("read error")
+			log.Debug().Err(err).Msg("read error")
 			break
 		}
 
@@ -263,6 +271,7 @@ func broadcast(game *Game, msg []byte, excludeID string) {
 const defaultPort = "8000"
 func main() {
 	/* godotenv is loaded in init(), above */
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = defaultPort
