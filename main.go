@@ -398,7 +398,15 @@ func broadcast(game *Game, msg []byte, excludeUniqueName string, excludeHost boo
 }
 
 func statsHandler(w http.ResponseWriter, r *http.Request) {
-	
+	data := map[string]interface{}{
+		"currentGamesCount": len(games),
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		log.Error().Err(err).Msg("Error encoding JSON in stats handler")
+		http.Error(w, err.Error(), 500)
+		return
+	}
 }
 
 const defaultPort = "8000"
