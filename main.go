@@ -282,7 +282,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 			"type": "player_joined",
 			"player": *user.UniqueName,
 		})
-		broadcast(game, joinMsg, *user.UniqueName)
+		broadcast(game, joinMsg, *user.UniqueName, false)
 
 		// Inform this user about the game code & current players
 		initialData := map[string]any{
@@ -335,13 +335,13 @@ func readPump(game *Game, user *User) {
 			leaveMsg, _ := json.Marshal(map[string]any{
 				"type": "host_left",
 			})
-			broadcast(game, leaveMsg, "")
+			broadcast(game, leaveMsg, "", true)
 		} else {
 			leaveMsg, _ := json.Marshal(map[string]any{
 				"type": "player_left",
 				"player": user.UniqueName,
 			})
-			broadcast(game, leaveMsg, "")
+			broadcast(game, leaveMsg, "", false)
 		}
 	}()
 
@@ -353,7 +353,11 @@ func readPump(game *Game, user *User) {
 		}
 
 		// Forward message to others
-		broadcast(game, msg, *user.UniqueName)
+		if user.isHost {
+			broadcast(game, msg, "", true)
+		} else {
+			broadcast(game, msg, *user.UniqueName, false)
+		}
 	}
 }
 
@@ -367,13 +371,19 @@ func writePump(user *User) {
 	}
 }
 
-func broadcast(game *Game, msg []byte, excludeUniqueName string) {
+/* set excludeUniqueName to your own UniqueName to prevent broadcasting to yourself,
+when you're the host, use excludeHost to prevent broadcasting to yourself
+you can leave excludeUniqueName blank (empty string), "", to not exclude any uniqueNames
+(an actual uniquename can never be empty, and hosts don't have uniquenames) */
+func broadcast(game *Game, msg []byte, excludeUniqueName string, excludeHost bool) {
 	game.Mutex.Lock()
 	defer game.Mutex.Unlock()
-	select {
-	case game.Host.Send <- msg:
-	default:
-		// Drop message if user is lagging
+	if !excludeHost && game.Host != nil {
+		select {
+		case game.Host.Send <- msg:
+		default:
+			// Drop message if user is lagging
+		}
 	}
 	for uniqueName, u := range game.Players {
 		if uniqueName == excludeUniqueName {
@@ -387,6 +397,10 @@ func broadcast(game *Game, msg []byte, excludeUniqueName string) {
 	}
 }
 
+func statsHandler(w http.ResponseWriter, r *http.Request) {
+	
+}
+
 const defaultPort = "8000"
 func main() {
 	/* godotenv is loaded in init(), above */
@@ -397,6 +411,7 @@ func main() {
 	}
 
 	http.HandleFunc("/ws", wsHandler)
+	http.HandleFunc("/stats", statsHandler)
 
 	log.Info().Msg(
 		"Quizfreely Realtime Server running on :" + port,
