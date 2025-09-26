@@ -43,7 +43,8 @@ var (
 )
 
 /* returns random 9-character alphanumeric string,
-with 3 letters and 6 digits, in this format: A12B34C56 */
+with 3 letters and 6 digits, in this format: A123B456 (LDDDLDDD)
+676,000,000 possible codes */
 func randomCode() string {
 	const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 	const numbers = "0123456789"
@@ -57,9 +58,37 @@ func randomCode() string {
 	return string(b)
 }
 
+/* returns 9-character alphanumeric string, with 2 letters & 3 numbers randomized
+3 letters and 6 digits, in this format: A100B230 (LD00LDD0)
+676,000 possible codes */
+func simpleRandomCode() string {
+	const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	const numbers = "123456789" /* notice no zero in the randomly chosen digits, unlike randomCode() */
+	rand.Seed(time.Now().UnixNano())
+	b := []byte{
+		letters[rand.Intn(len(letters))],
+		numbers[rand.Intn(len(numbers))],
+		'0',
+		'0',
+		letters[rand.Intn(len(letters))],
+		numbers[rand.Intn(len(numbers))],
+		numbers[rand.Intn(len(numbers))],
+		'0',
+	}
+	return string(b)
+}
+
 func createGame() *Game {
-	code := randomCode()
+	code := simpleRandomCode()
+	for i := 0; games[code] != nil; i++ {
+		code = randomCode()
+		if i > 100 {
+			log.Error().Msg("Took more than 100 iterations to generate a non-duplicate code")
+			break
+		}
+	}
 	hostCode := randomCode()
+
 	g := &Game{
 		Code:  code,
 		Players: make(map[string]*User),
