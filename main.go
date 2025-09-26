@@ -42,8 +42,8 @@ var (
 	gamesMu sync.Mutex
 )
 
-/* returns random 9-character alphanumeric string,
-with 3 letters and 6 digits, in this format: A123B456 (LDDDLDDD)
+/* returns random 8-character alphanumeric string,
+with 2 letters and 6 digits, in this format: A123B456 (LDDDLDDD)
 676,000,000 possible codes */
 func randomCode() string {
 	const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -58,8 +58,9 @@ func randomCode() string {
 	return string(b)
 }
 
-/* returns 9-character alphanumeric string, with 2 letters & 3 numbers randomized
-3 letters and 6 digits, in this format: A100B230 (LD00LDD0)
+/* returns 8-character alphanumeric string,
+with 2 random letters, 3 random digits, & 3 digits allways zero
+in this format: A100B230 (LD00LDD0)
 676,000 possible codes */
 func simpleRandomCode() string {
 	const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
