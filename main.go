@@ -258,6 +258,10 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Update host
 		game.Mutex.Lock()
+		if game.Host != nil && game.Host.Conn != nil {
+			conn.WriteMessage(websocket.TextMessage, []byte(`{"msg":"host reconnected"}`))
+			conn.Close()
+		}
 		game.Host = user
 		game.Mutex.Unlock()
 
