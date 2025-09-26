@@ -448,6 +448,25 @@ func statsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func gameStatusHandler(w http.ResponseWriter, r *http.Request) {
+	var data map[string]interface{}
+	if games[r.PathValue("code")] == nil {
+		data = map[string]interface{}{
+			"active": false,
+		}
+	} else {
+		data = map[string]interface{}{
+			"active": true,
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		log.Error().Err(err).Msg("Error encoding JSON in game status handler")
+		http.Error(w, err.Error(), 500)
+		return
+	}
+}
+
 const defaultPort = "8000"
 func main() {
 	/* godotenv is loaded in init(), above */
@@ -458,7 +477,8 @@ func main() {
 	}
 
 	http.HandleFunc("/ws", wsHandler)
-	http.HandleFunc("/stats", statsHandler)
+	http.HandleFunc("GET /stats", statsHandler)
+	http.HandleFunc("GET /status/{code}", gameStatusHandler)
 
 	log.Info().Msg(
 		"Quizfreely Realtime Server running on :" + port,
