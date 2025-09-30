@@ -390,9 +390,27 @@ func readPump(game *Game, user *User) {
 			log.Debug().Err(err).Msg("read error")
 			break
 		}
-
-		// Forward message to others
+		
 		if user.isHost {
+			var action struct {
+				Action string `json:"action"`
+				UniqueName string `json:"uniqueName"`
+			}
+			if err := json.Unmarshal(msg, &action); err == nil && action.Action == "kick" && game.Players[action.UniqueName] != nil {
+				gamesMu.Lock()
+				game.Players[action.UniqueName].Conn.Close()
+				delete(game.Players, action.UniqueName)
+				gamesMu.Unlock()
+
+				leaveMsg, _ := json.Marshal(map[string]any{
+					"type": "player_left",
+					"player": action.UniqueName,
+				})
+				broadcast(game, leaveMsg, "", true)
+
+				continue
+			}
+
 			broadcast(game, msg, "", true)
 		} else {
 			broadcast(game, msg, *user.UniqueName, false)
