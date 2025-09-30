@@ -410,12 +410,6 @@ func readPump(game *Game, user *User) {
 					}
 				game.Mutex.Unlock()
 
-				leaveMsg, _ := json.Marshal(map[string]any{
-					"type": "player_left",
-					"player": action.UniqueName,
-				})
-				broadcast(game, leaveMsg, "", true)
-
 				continue
 			}
 
