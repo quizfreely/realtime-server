@@ -34,7 +34,7 @@ type Game struct {
 	Players map[string]*User
 	HostCode string
 	Studyset map[string]interface{}
-	answerWith string /* "TERM", "DEF", or "BOTH" */
+	AnswerWith string /* "TERM", "DEF", or "BOTH" */
 	Mutex sync.Mutex
 }
 
