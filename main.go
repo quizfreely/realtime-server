@@ -34,6 +34,7 @@ type Game struct {
 	Players map[string]*User
 	HostCode string
 	Studyset map[string]interface{}
+	answerWith string /* "TERM", "DEF", or "BOTH" */
 	Mutex sync.Mutex
 }
 
@@ -189,6 +190,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 		UserID *string `json:"userId"`
 		UniqueName *string `json:"uniqueName"`
 		Studyset map[string]interface{} `json:"studyset"`
+		AnswerWith string `json:"answerWith"`
 	}
 	if err := json.Unmarshal(msg, &init); err != nil {
 		log.Error().Err(err).Msg("bad init message")
@@ -211,6 +213,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 		game.Mutex.Lock()
 		game.Host = user
 		game.Studyset = init.Studyset
+		game.AnswerWith = init.AnswerWith
 		game.Mutex.Unlock()
 
 		// Inform this user about the game code, host code, & players
@@ -219,6 +222,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 			"code": game.Code,
 			"hostCode": game.HostCode,
 			"studyset": game.Studyset,
+			"answerWith": game.AnswerWith,
 			"players": func() []string {
 				uniqueNames := []string{}
 				for uniqueName := range game.Players {
@@ -271,6 +275,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 			"code": game.Code,
 			"hostCode": game.HostCode,
 			"studyset": game.Studyset,
+			"answerWith": game.AnswerWith,
 			"players": func() []string {
 				uniqueNames := []string{}
 				for uniqueName := range game.Players {
@@ -327,6 +332,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 			"type": "joined",
 			"code": game.Code,
 			"studyset": game.Studyset,
+			"answerWith": game.AnswerWith,
 			"players": func() []string {
 				uniqueNames := []string{}
 				for uniqueName := range game.Players {
