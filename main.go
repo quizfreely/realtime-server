@@ -402,11 +402,13 @@ func readPump(game *Game, user *User) {
 				Action string `json:"action"`
 				UniqueName string `json:"uniqueName"`
 			}
-			if err := json.Unmarshal(msg, &action); err == nil && action.Action == "kick" && game.Players[action.UniqueName] != nil {
-				gamesMu.Lock()
-				game.Players[action.UniqueName].Conn.Close()
-				delete(game.Players, action.UniqueName)
-				gamesMu.Unlock()
+			if err := json.Unmarshal(msg, &action); err == nil && action.Action == "kick" {
+				game.Mutex.Lock()
+					if player, ok := game.Players[action.UniqueName]; ok {
+					    player.Conn.Close()
+					    delete(game.Players, action.UniqueName)
+					}
+				game.Mutex.Unlock()
 
 				leaveMsg, _ := json.Marshal(map[string]any{
 					"type": "player_left",
